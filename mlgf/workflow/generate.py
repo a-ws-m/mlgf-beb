@@ -10,8 +10,10 @@ from pyscf.lib import logger, temporary_env
 
 try:
     from fcdmft.solver import fcigf, mpiccgf_mor
-except ModuleNotFoundError:
-    pass
+except (ModuleNotFoundError, ImportError):
+    # Optional FCI helpers are absent from the public compatible fcdmft stack.
+    # DFT and GWAC do not use them.
+    fcigf = mpiccgf_mor = None
 
 from fcdmft.gw.mol.gw_ac import GWAC, _get_scaled_legendre_roots, \
     get_g0, get_sigma, get_sigma_outcore
@@ -111,6 +113,15 @@ def do_rks_calculation(mol, chkfile, **kwargs):
     mlf['vk_hf'] = -0.5*np.asarray(vk)
 
     mlf['ef'] = (mf.mo_energy[nocc-1] + mf.mo_energy[nocc]) / 2.0
+    # The released QM9 model predicts 30 complex-frequency values. DFT+GWAC
+    # checkpoints carry this through GWAC.nw2; DFT-only checkpoints must too.
+    nw2 = int(kwargs.get('mlgf_nw2', 30))
+    if nw2 <= 18:
+        raise ValueError('mlgf_nw2 must exceed the 18-point Pade subset')
+    freqs, wts = _get_scaled_legendre_roots(nw2)
+    mlf['freqs'] = freqs
+    mlf['wts'] = wts
+    mlf['omega_fit'] = mlf['ef'] + 1j * freqs
     mlf['xc'] = xc
 
     return mf, mlf
@@ -564,5 +575,4 @@ if __name__ == '__main__':
 
 
     
-
 
